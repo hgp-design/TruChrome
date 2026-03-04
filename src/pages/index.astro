@@ -1,4 +1,5 @@
 ---
+import ColorCycleBackground from '../components/ColorCycleBackground.astro';
 ---
 
 <html lang="en">
@@ -16,14 +17,17 @@
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: #0a0a0a;
-        color: #ffffff;
-        height: 100vh;
+        color: var(--fg, #ffffff);
+        height: 100dvh;
+        min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
       .container {
+        position: relative;
+        z-index: 2;
         text-align: center;
         padding: 0 24px;
       }
@@ -37,12 +41,13 @@
 
       p {
         font-size: 18px;
-        color: #888888;
+        color: var(--fg-muted, rgba(255, 255, 255, 0.72));
         margin-bottom: 32px;
       }
     </style>
   </head>
   <body>
+    <ColorCycleBackground />
     <div class="container">
       <h1>TruChrome</h1>
       <p>Something is coming. Stay tuned.</p>

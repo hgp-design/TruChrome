@@ -1,0 +1,246 @@
+---
+---
+
+<div class="bg-layer" aria-hidden="true"></div>
+
+<aside class="readout" aria-live="polite" aria-atomic="true">
+  <p><span class="label">RGB</span><span id="rgb-value">rgb(0, 0, 0)</span></p>
+  <p><span class="label">HEX</span><span id="hex-value">#000000</span></p>
+  <p><span class="label">HSL</span><span id="hsl-value">hsl(0 0% 0%)</span></p>
+</aside>
+
+<script>
+  const palette = [
+    [16, 30, 56],
+    [28, 45, 72],
+    [43, 64, 97],
+    [53, 83, 118],
+    [67, 101, 132],
+    [80, 113, 136],
+    [94, 124, 132],
+    [109, 131, 122],
+    [124, 136, 111],
+    [136, 132, 101],
+    [128, 104, 92],
+    [101, 79, 92]
+  ];
+
+  const root = document.documentElement;
+  const rgbEl = document.getElementById('rgb-value');
+  const hexEl = document.getElementById('hex-value');
+  const hslEl = document.getElementById('hsl-value');
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const spinDuration = reduceMotion ? 0 : 560;
+  const transitionMs = reduceMotion ? 160 : 2400;
+  const dwellMs = reduceMotion ? 2200 : 2600;
+  let currentIndex = 0;
+  let cycleTimer;
+  let rafId;
+  let displayedRgb = [...palette[0]];
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function toHex(rgb) {
+    return (
+      '#' +
+      rgb
+        .map((value) => value.toString(16).padStart(2, '0'))
+        .join('')
+        .toUpperCase()
+    );
+  }
+
+  function rgbToHsl(rgb) {
+    const [rRaw, gRaw, bRaw] = rgb;
+    const r = rRaw / 255;
+    const g = gRaw / 255;
+    const b = bRaw / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    let h = 0;
+    let s = 0;
+    const l = (max + min) / 2;
+
+    if (delta !== 0) {
+      s = delta / (1 - Math.abs(2 * l - 1));
+      switch (max) {
+        case r:
+          h = 60 * (((g - b) / delta) % 6);
+          break;
+        case g:
+          h = 60 * ((b - r) / delta + 2);
+          break;
+        default:
+          h = 60 * ((r - g) / delta + 4);
+          break;
+      }
+    }
+
+    if (h < 0) h += 360;
+    return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+  }
+
+  function luminance(rgb) {
+    const convert = (value) => {
+      const v = value / 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    const [r, g, b] = rgb.map(convert);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(l1, l2) {
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function setContrastVars(rgb) {
+    const lightRgb = [245, 247, 250];
+    const darkRgb = [17, 19, 24];
+    const bgLum = luminance(rgb);
+    const lightContrast = contrastRatio(bgLum, luminance(lightRgb));
+    const darkContrast = contrastRatio(bgLum, luminance(darkRgb));
+    const useLight = lightContrast >= darkContrast;
+
+    root.style.setProperty('--fg', useLight ? '#F5F7FA' : '#111318');
+    root.style.setProperty(
+      '--fg-muted',
+      useLight ? 'rgba(245, 247, 250, 0.88)' : 'rgba(17, 19, 24, 0.88)'
+    );
+  }
+
+  function renderValues(rgb) {
+    const hex = toHex(rgb);
+    const [h, s, l] = rgbToHsl(rgb);
+    rgbEl.textContent = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    hexEl.textContent = hex;
+    hslEl.textContent = `hsl(${h} ${s}% ${l}%)`;
+  }
+
+  function applyBackground(rgb) {
+    root.style.setProperty('--bg-color', `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`);
+    setContrastVars(rgb);
+  }
+
+  function easeOutCubic(t) {
+    return 1 - (1 - t) ** 3;
+  }
+
+  function spinToColor(targetRgb) {
+    if (reduceMotion) {
+      displayedRgb = [...targetRgb];
+      renderValues(displayedRgb);
+      return;
+    }
+
+    const startRgb = [...displayedRgb];
+    const start = performance.now();
+
+    const tick = (now) => {
+      const progress = clamp((now - start) / spinDuration, 0, 1);
+      const eased = easeOutCubic(progress);
+      const wobbleAmplitude = (1 - progress) * 8;
+      const wobble = [
+        Math.sin(now * 0.045) * wobbleAmplitude,
+        Math.sin(now * 0.055 + 1.7) * wobbleAmplitude,
+        Math.sin(now * 0.05 + 3.2) * wobbleAmplitude
+      ];
+
+      const nextRgb = [0, 1, 2].map((i) =>
+        Math.round(
+          clamp(startRgb[i] + (targetRgb[i] - startRgb[i]) * eased + wobble[i], 0, 255)
+        )
+      );
+
+      renderValues(nextRgb);
+
+      if (progress < 1) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        displayedRgb = [...targetRgb];
+        renderValues(displayedRgb);
+      }
+    };
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function scheduleNext() {
+    cycleTimer = window.setTimeout(() => {
+      currentIndex = (currentIndex + 1) % palette.length;
+      const next = palette[currentIndex];
+      applyBackground(next);
+      spinToColor(next);
+      scheduleNext();
+    }, transitionMs + dwellMs);
+  }
+
+  applyBackground(palette[currentIndex]);
+  renderValues(palette[currentIndex]);
+  scheduleNext();
+
+  window.addEventListener(
+    'pagehide',
+    () => {
+      window.clearTimeout(cycleTimer);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+    },
+    { once: true }
+  );
+</script>
+
+<style>
+  .bg-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-color: var(--bg-color, rgb(16, 30, 56));
+    transition: background-color 2400ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .readout {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 3;
+    pointer-events: none;
+    width: min(240px, calc(100vw - 32px));
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(10, 12, 18, 0.38);
+    backdrop-filter: blur(6px);
+    color: var(--fg, #f5f7fa);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+      'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+  }
+
+  .readout p {
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .label {
+    opacity: 0.72;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bg-layer {
+      transition-duration: 160ms;
+    }
+  }
+</style>
