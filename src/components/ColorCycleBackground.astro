@@ -12,17 +12,17 @@
 <script>
   const palette = [
     [16, 30, 56],
-    [28, 45, 72],
-    [43, 64, 97],
+    [128, 104, 92],
     [53, 83, 118],
+    [136, 132, 101],
+    [28, 45, 72],
+    [109, 131, 122],
+    [43, 64, 97],
+    [124, 136, 111],
     [67, 101, 132],
     [80, 113, 136],
-    [94, 124, 132],
-    [109, 131, 122],
-    [124, 136, 111],
-    [136, 132, 101],
-    [128, 104, 92],
-    [101, 79, 92]
+    [101, 79, 92],
+    [94, 124, 132]
   ];
 
   const root = document.documentElement;
@@ -33,9 +33,27 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const spinDuration = reduceMotion ? 0 : 560;
   const transitionMs = reduceMotion ? 160 : 2400;
-  const dwellMs = reduceMotion ? 2200 : 2600;
+  const cycleIntervalMs = reduceMotion ? 2200 : 3000;
+  const readoutDelayMs = reduceMotion ? 0 : 140;
   let currentIndex = 0;
+  const lightRgb = [245, 247, 250];
+  const darkRgb = [17, 19, 24];
+  const onThreshold = 0.44;
+  const offThreshold = 0.30;
+  let prefersLightText = (() => {
+    const firstLum = luminance(palette[0]);
+    const firstLightContrast = contrastRatio(firstLum, luminance(lightRgb));
+    const firstDarkContrast = contrastRatio(firstLum, luminance(darkRgb));
+    let mode = true;
+    if (mode) {
+      if (firstLum >= onThreshold && firstDarkContrast >= 4.5) mode = false;
+    } else if (firstLum <= offThreshold && firstLightContrast >= 4.5) {
+      mode = true;
+    }
+    return mode;
+  })();
   let cycleTimer;
+  let readoutTimer;
   let rafId;
   let displayedRgb = [...palette[0]];
 
@@ -100,17 +118,22 @@
   }
 
   function setContrastVars(rgb) {
-    const lightRgb = [245, 247, 250];
-    const darkRgb = [17, 19, 24];
     const bgLum = luminance(rgb);
     const lightContrast = contrastRatio(bgLum, luminance(lightRgb));
     const darkContrast = contrastRatio(bgLum, luminance(darkRgb));
-    const useLight = lightContrast >= darkContrast;
+
+    if (prefersLightText) {
+      if (bgLum >= onThreshold && darkContrast >= 4.5) prefersLightText = false;
+    } else if (bgLum <= offThreshold && lightContrast >= 4.5) {
+      prefersLightText = true;
+    }
+
+    const useLight = prefersLightText;
 
     root.style.setProperty('--fg', useLight ? '#F5F7FA' : '#111318');
     root.style.setProperty(
       '--fg-muted',
-      useLight ? 'rgba(245, 247, 250, 0.88)' : 'rgba(17, 19, 24, 0.88)'
+      useLight ? 'rgba(245, 247, 250, 0.82)' : 'rgba(17, 19, 24, 0.82)'
     );
   }
 
@@ -175,9 +198,11 @@
       currentIndex = (currentIndex + 1) % palette.length;
       const next = palette[currentIndex];
       applyBackground(next);
-      spinToColor(next);
+      readoutTimer = window.setTimeout(() => {
+        spinToColor(next);
+      }, readoutDelayMs);
       scheduleNext();
-    }, transitionMs + dwellMs);
+    }, cycleIntervalMs);
   }
 
   applyBackground(palette[currentIndex]);
@@ -188,6 +213,7 @@
     'pagehide',
     () => {
       window.clearTimeout(cycleTimer);
+      window.clearTimeout(readoutTimer);
       if (rafId) {
         cancelAnimationFrame(rafId);
       }
@@ -225,6 +251,11 @@
     font-size: 13px;
     line-height: 1.5;
     letter-spacing: 0.01em;
+    transition: color 420ms ease, border-color 420ms ease, background-color 420ms ease;
+  }
+
+  :global(body) {
+    transition: color 420ms ease;
   }
 
   .readout p {
